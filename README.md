@@ -11,68 +11,67 @@ Most backup tutorials suggest tarball archives or cloud storage. This guide uses
 - **rsync mirror** — your backup is a browsable directory, not a blob
 - **Incremental** — only changed files are transferred each run
 - **No cloud dependency** — your data stays on servers you control
-- **Full-fidelity** — all files including secrets (API keys stay on your network)
+- **Full-fidelity** — includes all files including secrets (API keys never leave your network)
 - **Works for multiple Hermes instances** — one VPS can host backups for several agents
 
 ## How It Works
 
 ```
 Your Hermes Server                    Backup VPS
-┌──────────────────┐                ┌─────────────────────┐
-│ ~/.hermes/       │   rsync over   │ /root/backups/      │
-│   ├── config.yaml│ ─── SSH ────▶  │   backup-hermes/    │
-│   ├── skills/    │                │   └── <hostname>/   │
-│   ├── state.db   │                │       ├── config/   │
-│   ├── mnemosyne/ │                │       ├── skills/   │
-│   ├── cron/      │                │       ├── sessions/ │
-│   └── .env       │                │       ├── cron/     │
-│                  │                │       └── ...       │
-│ /usr/local/lib/  │                │                      │
-│   hermes-agent/  │                │                      │
-└──────────────────┘                └─────────────────────┘
+┌──────────────────┐                ┌─────────────────────────┐
+│ ~/.hermes/       │   rsync over   │ /root/backups/          │
+│   ├── config.yaml│ ─── SSH ────▶  │   backup-hermes/        │
+│   ├── skills/    │                │   └── <server-name>/    │
+│   ├── state.db   │                │       ├── config.yaml   │
+│   ├── mnemosyne/ │                │       ├── skills/       │
+│   ├── cron/      │                │       ├── sessions/     │
+│   └── .env       │                │       ├── cron/         │
+│                  │                │       └── ...           │
+│ /usr/local/lib/  │                │                          │
+│   hermes-agent/  │                │                          │
+└──────────────────┘                └─────────────────────────┘
 ```
 
 ## Prerequisites
 
 - A Hermes Agent installation (any server)
 - A Linux VPS reachable via SSH (any provider — DigitalOcean, Linode, Hetzner, Oracle Cloud, etc.)
-- SSH key-based authentication set up between the two
+- SSH key-based authentication between the two (set up in Step 1)
 
 ## Step-by-Step Setup
 
 ### 1. Prepare Your VPS
 
-SSH into your Hermes server and generate an SSH key if you don't have one:
+> **Step 1a — On your Hermes server:** Generate an SSH key if you do not have one:
 
 ```bash
 ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Copy the public key output. Then, on your **backup VPS**, add it to authorized keys:
+Copy the output (your public key).
+
+> **Step 1b — On your backup VPS:** Add the public key to authorized keys:
 
 ```bash
-echo "<paste your public key here>" >> ~/.ssh/authorized_keys
+echo "<paste the public key here>" >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-Test the connection from your Hermes server:
+> **Step 1c — Back on your Hermes server:** Test the connection:
 
 ```bash
 ssh -o StrictHostKeyChecking=accept-new root@<your-vps-ip> "hostname"
 ```
 
+You should see the VPS hostname printed back.
+
 ### 2. Create the Backup Script
 
-Save the backup script to `~/.hermes/scripts/hermes-backup.sh` on your Hermes server:
+Save the backup script on your Hermes server:
 
 ```bash
 mkdir -p ~/.hermes/scripts
-```
-
-Download the script:
-
-```bash
 curl -o ~/.hermes/scripts/hermes-backup.sh \
   https://raw.githubusercontent.com/MrElixir67/how-to-backup-hermes-on-your-vps/main/hermes-backup.sh
 chmod +x ~/.hermes/scripts/hermes-backup.sh
@@ -88,7 +87,7 @@ Create a config file so the script knows where to send backups:
 cat > ~/.hermes/scripts/backup-target.conf << 'EOF'
 BACKUP_IP=<your-vps-ip>
 BACKUP_USER=root
-BACKUP_FOLDER=<your-server-name>   # optional, defaults to hostname
+BACKUP_FOLDER=<your-server-name>
 EOF
 ```
 
@@ -121,7 +120,7 @@ Target:    root@203.0.113.10:/root/backups/backup-hermes/production
   [OK] hermes-src/
 
 [3/5] Creating local archive...
-  [OK] ~/.hermes/backups/hermes-backup-production-2026-06-18_12-30-00.tar.gz
+  [OK] ~/.hermes/backups/hermes-backup-production-YYYY-MM-DD_HH-MM-SS.tar.gz
 
 [4/5] Cleaning old local archives...
   [OK] kept last 7
@@ -137,6 +136,22 @@ Verify the backup on your VPS:
 
 ```bash
 ssh root@<your-vps-ip> "ls -la /root/backups/backup-hermes/<your-server-name>/"
+```
+
+Expected output:
+
+```
+/root/backups/backup-hermes/production/
+├── config.yaml
+├── .env
+├── auth.json
+├── state.db
+├── skills/
+├── sessions/
+├── cron/
+├── mnemosyne/
+├── hermes-src/
+└── latest-archive.tar.gz
 ```
 
 ### 5. Schedule Automatic Backups
@@ -171,15 +186,23 @@ This runs the backup daily at 3 AM server time.
 | `~/.hermes/skills/` | All custom skills and workflows |
 | `~/.hermes/cron/` | Cron job definitions |
 | `~/.hermes/mnemosyne/` | Persistent memory database |
-| `/usr/local/lib/hermes-agent/` | Hermes source code (full recovery) |
+| `/usr/local/lib/hermes-agent/` | Hermes source code (for full recovery) |
 
 Excluded from source code backup: `.git`, `node_modules`, `venv`, `.venv`, `__pycache__`, `*.pyc`.
 
 ## Restore Guide
 
-### Restore from VPS Backup
+### Prerequisites
 
-The restore script (`hermes-restore.sh`) handles full recovery from your VPS backup:
+Download the restore script to your Hermes server:
+
+```bash
+curl -o ~/.hermes/scripts/hermes-restore.sh \
+  https://raw.githubusercontent.com/MrElixir67/how-to-backup-hermes-on-your-vps/main/hermes-restore.sh
+chmod +x ~/.hermes/scripts/hermes-restore.sh
+```
+
+### Restore from VPS Backup
 
 ```bash
 bash ~/.hermes/scripts/hermes-restore.sh
@@ -215,9 +238,9 @@ When multiple Hermes instances back up to the same VPS, each creates its own fol
 
 ```
 /root/backups/backup-hermes/
-├── jemox/      # Proxmox host Hermes
-├── elixia/     # Windows coding Hermes
-└── staging/    # Test environment
+├── production/  # Main production Hermes
+├── staging/     # Test environment
+└── dev/         # Development machine
 ```
 
 To add another Hermes instance:
@@ -240,12 +263,21 @@ curl -o ~/.hermes/scripts/hermes-backup.sh \
 chmod +x ~/.hermes/scripts/hermes-backup.sh
 ```
 
+## Security Note
+
+This backup includes sensitive data: API keys (`.env`), OAuth tokens (`auth.json`), and session history (`state.db`). Treat your backup VPS with the same security standards as your Hermes server:
+
+- Use **SSH key authentication only** — never password-based auth for automated backups
+- Restrict SSH access to specific IPs where possible
+- Consider encrypting the backup folder with a tool like `gpg` or `age` for an extra layer of protection
+- Regularly audit what is stored in the backup if you rotate API keys
+
 ## Best Practices
 
-- **Set a descriptive `BACKUP_FOLDER`** — don't rely on `hostname` default, especially when backing up multiple servers
-- **Test your restore** — verify at least once that the restore procedure actually works
+- **Set a descriptive `BACKUP_FOLDER`** — do not rely on the `hostname` default, especially when backing up multiple servers
+- **Test your restore** — verify at least once that the restore procedure actually works before you need it
 - **Keep the script updated** — the backup script is meant to be universal; improvements apply to all your Hermes instances
-- **Monitor backup health** — check that cron actually runs (verify with `ls -la /root/backups/backup-hermes/` on the VPS)
+- **Monitor backup health** — regularly check that cron runs by verifying files on the VPS
 - **Use SSH key auth** — never use password-based SSH for automated backups
 
 ## Files
