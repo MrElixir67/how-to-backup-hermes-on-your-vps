@@ -2,6 +2,8 @@
 
 A practical, zero-dependency guide to backing up your [Hermes Agent](https://github.com/NousResearch/hermes-agent) data to any Linux VPS using rsync over SSH.
 
+![Architecture](assets/architecture.svg)
+
 ## Why This Approach?
 
 Hermes Agent stores valuable persistent data in `~/.hermes/` — skills, memory (Mnemosyne), conversation history, environment variables, and auth tokens. Losing this data means losing months of agent learning and customization.
