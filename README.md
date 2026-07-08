@@ -1,3 +1,6 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-blue)](#)
+
 # Hermes Agent Backup to VPS
 
 A practical, zero-dependency guide to backing up your [Hermes Agent](https://github.com/NousResearch/hermes-agent) data to any Linux VPS using SSH.
